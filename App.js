@@ -1,99 +1,89 @@
-import { StyleSheet, Text, View,Button, Image } from 'react-native';
-import { Camera, CameraType } from 'expo-camera';
-import * as MediaLibrary from "expo-media-library"
-import { useState,useEffect,useRef } from 'react';
+import { StatusBar } from 'expo-status-bar';
+import { StyleSheet, Text, View, SafeAreaView, Button, Image } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import { Camera } from 'expo-camera';
+import { shareAsync } from 'expo-sharing';
+import * as MediaLibrary from 'expo-media-library';
 
 export default function App() {
-  const [hasCameraPermission, setHasCameraPermission]=useState(null);
-  const [image, setImage] =useState(null);
-  const [type,setType] =useState(Camera.Constants.Type.back);
-  const [flash, setFlash] = useState(Camera.Constants.FlashMode.off);
-  const cameraRef=useRef(null);
+  let cameraRef = useRef();
+  const [hasCameraPermission, setHasCameraPermission] = useState();
+  const [hasMediaLibraryPermission, setHasMediaLibraryPermission] = useState();
+  const [photo, setPhoto] = useState();
 
-  useRef(()=>{
-    (async()=>{
-      MediaLibrary.requestPermissionsAsync();
-      const cameraStatus =await Camera.requestCameraPermissionsAsync()
-      setHasCameraPermission(cameraStatus.status === 'granted');
-
+  useEffect(() => {
+    (async () => {
+      const cameraPermission = await Camera.requestCameraPermissionsAsync();
+      const mediaLibraryPermission = await MediaLibrary.requestPermissionsAsync();
+      setHasCameraPermission(cameraPermission.status === "granted");
+      setHasMediaLibraryPermission(mediaLibraryPermission.status === "granted");
     })();
-  },[])
+  }, []);
 
-  const takePicture =async() =>{
-    if (cameraRef){
-      try{
-        const data = await cameraRef.current.takePictureAsync();
-        console.log(data)
-        setImage(data.uri);
-      }catch(e){
-        console.log(e);
-      }
-    }
+  if (hasCameraPermission === undefined) {
+    return <Text>Requesting permissions...</Text>
+  } else if (!hasCameraPermission) {
+    return <Text>Permission for camera not granted. Please change this in settings.</Text>
   }
 
-  const saveImage =async () =>{
-    if(image){
-      try{
-        await MediaLibrary.createAssetAsync(image)
-        alert('Picture Save!')
-        setImage(null)
-      }catch(e){
-        console.log(e)
-      }
-    }
+  let takePic = async () => {
+    let options = {
+      quality: 1,
+      base64: true,
+      exif: false
+    };
+
+    let newPhoto = await cameraRef.current.takePictureAsync(options);
+    setPhoto(newPhoto);
+  };
+
+  if (photo) {
+    let sharePic = () => {
+      shareAsync(photo.uri).then(() => {
+        setPhoto(undefined);
+      });
+    };
+
+    let savePhoto = () => {
+      MediaLibrary.saveToLibraryAsync(photo.uri).then(() => {
+        setPhoto(undefined);
+      });
+    };
+
+    return (
+      <SafeAreaView style={styles.container}>
+        <Image style={styles.preview} source={{ uri: "data:image/jpg;base64," + photo.base64 }} />
+        <Button title="Share" onPress={sharePic} />
+        {hasMediaLibraryPermission ? <Button title="Save" onPress={savePhoto} /> : undefined}
+        <Button title="Discard" onPress={() => setPhoto(undefined)} />
+      </SafeAreaView>
+    );
   }
 
-  if (hasCameraPermission=== false){
-    return<Text>No access to camera</Text>
-  }
   return (
-    <View style={styles.container}>
-      {!image ?
-      
-       <Camera
-       style={styles.camera}
-       type={type}
-       flash={flash}
-       ref={cameraRef}
-       >
-        <View style={{
-          flexDirection:'row',
-          justifyContent:'space-between',
-          padding:30
-          
-        }}></View>
-       </Camera>
-       :
-       <Image source={{uri:image}} style={styles.camera}/>
-      }
-       <View>
-         {image ?
-         <View style={{
-          flexDirection:'row',
-          justifyContent:'space-between',
-          paddingHorizontal:50
-         }}>
-          <Button title={'Re-take'}  onPress={()=>setImage(null)}/>
-          <Button title={'Save'} onPress={saveImage}/>
-         </View>
-         :
-        <Button title={"Take a picture"} onPress={takePicture}/>
-         }
-       </View>
-    </View>
+    <Camera style={styles.container} ref={cameraRef}>
+      <View style={styles.buttonContainer}>
+        <Button title="Take Pic" onPress={takePic} />
+      </View>
+      <StatusBar style="auto" />
+    </Camera>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: 'black',
+    alignItems: 'center',
     justifyContent: 'center',
-    paddingBottom:3
-  },
 
-  camera:{
-    flex:1,
-    borderRadius:1,
+  },
+  buttonContainer: {
+    backgroundColor: '#fff',
+    alignSelf: "stretch",
+    
+  },
+  preview: {
+    alignSelf: 'stretch',
+    flex: 1
   }
 });
